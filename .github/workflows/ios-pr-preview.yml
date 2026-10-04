@@ -345,7 +345,7 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DIOS_HOST_TOOLS_DIR="$HOST_INSTALL" \
             -DLIBDIR="$DEPS_BUILD/Release"
-          cmake --build "$APP_BUILD" --parallel "$build_jobs" --target install
+          cmake --build "$APP_BUILD" --parallel "$build_jobs" --target install -- -k 0
           ccache --show-stats
           python3 build_files/ios/audit_build_features.py \
             "$APP_BUILD/bin/Blender.app/Blender" \
@@ -355,7 +355,7 @@ jobs:
             --maximum "$IOS_DEPLOYMENT_TARGET"
 
       - name: Save full-app compiler cache
-        if: success() && steps.app-compiler-cache.outputs.cache-hit != 'true'
+        if: always() && steps.app-compiler-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: ${{ env.CCACHE_DIR }}
