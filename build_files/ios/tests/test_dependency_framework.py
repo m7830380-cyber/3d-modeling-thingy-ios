@@ -58,7 +58,7 @@ class ConfigurePlanTests(unittest.TestCase):
             self.assertTrue(plan[key].startswith(bulk_prefix), (key, plan[key]))
         self.assertEqual(plan["cache_inputs"]["target"], "ios-simulator")
         self.assertEqual(
-            plan["cache_inputs"]["target_triple"], "arm64-apple-ios18.0-simulator"
+            plan["cache_inputs"]["target_triple"], "arm64-apple-ios16.2-simulator"
         )
         self.assertTrue(plan["cache_inputs"]["build_python_version"].startswith("3.13."))
 

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import struct
 import subprocess
 import sys
 import tempfile
@@ -193,6 +194,69 @@ class AbiAuditTests(AuditorTestCase):
                 "abi", archive, "--target", "ios-simulator", "--arch", "arm64"
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class MinimumOsAuditTests(AuditorTestCase):
+    @staticmethod
+    def macho(minos: str, legacy: bool = False) -> bytes:
+        major, minor = (int(part) for part in minos.split("."))
+        encoded = (major << 16) | (minor << 8)
+        if legacy:
+            command = struct.pack("<4I", 0x25, 16, encoded, encoded)
+        else:
+            command = struct.pack("<6I", 0x32, 24, 2, encoded, encoded, 0)
+        header = struct.pack("<8I", 0xFEEDFACF, 0x0100000C, 0, 2, 1, len(command), 0, 0)
+        return header + command
+
+    def write_bundle(self, root: Path, minos: str, plist_minos: str) -> Path:
+        bundle = root / "Blender.app"
+        framework = bundle / "Frameworks" / "Fixture.framework"
+        framework.mkdir(parents=True)
+        (bundle / "Blender").write_bytes(self.macho(minos))
+        (framework / "Fixture").write_bytes(self.macho("16.0", legacy=True))
+        (bundle / "Info.plist").write_bytes(plistlib.dumps({"MinimumOSVersion": plist_minos}))
+        (bundle / "notes.txt").write_text("not a binary\n")
+        return bundle
+
+    def test_rejects_binary_built_for_newer_ios_than_supported(self) -> None:
+        # Reproduces the iOS 16.2 launch crash: dyld refuses a binary "built for iOS 18.0".
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = self.write_bundle(Path(directory), "18.0", "16.2")
+            self.assert_audit_fails(
+                self.run_audit("minos", bundle, "--maximum", "16.2"), "MINOS-MACHO"
+            )
+
+    def test_rejects_plist_minimum_newer_than_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = self.write_bundle(Path(directory), "16.2", "18.0")
+            self.assert_audit_fails(
+                self.run_audit("minos", bundle, "--maximum", "16.2"), "MINOS-PLIST"
+            )
+
+    def test_accepts_bundle_targeting_supported_minimum(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = self.write_bundle(Path(directory), "16.2", "16.2")
+            result = self.run_audit("minos", bundle, "--maximum", "16.2")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_reads_every_slice_of_a_universal_binary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "Blender.app"
+            bundle.mkdir()
+            first = self.macho("16.2")
+            second = self.macho("18.0")
+            header = struct.pack(">2I", 0xCAFEBABE, 2)
+            offset = 4096
+            entries = struct.pack(">5I", 0x0100000C, 0, offset, len(first), 12)
+            entries += struct.pack(">5I", 0x0100000C, 1, offset * 2, len(second), 12)
+            data = bytearray(offset * 2 + len(second))
+            data[: len(header) + len(entries)] = header + entries
+            data[offset : offset + len(first)] = first
+            data[offset * 2 :] = second
+            (bundle / "Blender").write_bytes(bytes(data))
+            self.assert_audit_fails(
+                self.run_audit("minos", bundle, "--maximum", "16.2"), "MINOS-MACHO"
+            )
 
 
 class PortMapAuditTests(AuditorTestCase):

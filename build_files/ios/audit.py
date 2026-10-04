@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 import plistlib
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -307,6 +308,116 @@ def audit_abi(path: Path, target: str, architecture: str) -> list[Finding]:
     return findings
 
 
+MACHO_MAGIC_64 = 0xFEEDFACF
+FAT_MAGIC = 0xCAFEBABE
+FAT_MAGIC_64 = 0xCAFEBABF
+LC_VERSION_MIN_IPHONEOS = 0x25
+LC_BUILD_VERSION = 0x32
+
+
+def decode_macho_version(value: int) -> tuple[int, int, int]:
+    return (value >> 16, (value >> 8) & 0xFF, value & 0xFF)
+
+
+def format_version(version: tuple[int, ...]) -> str:
+    return ".".join(str(part) for part in version)
+
+
+def parse_version(text: str) -> tuple[int, int, int]:
+    parts = [int(part) for part in text.split(".")]
+    while len(parts) < 3:
+        parts.append(0)
+    return (parts[0], parts[1], parts[2])
+
+
+def thin_macho_minimum_os(data: bytes, offset: int = 0) -> list[tuple[int, int, int]]:
+    """Return the minimum OS versions declared by a 64-bit little-endian Mach-O slice."""
+    if len(data) < offset + 32:
+        return []
+    magic, _cpu, _subtype, _filetype, command_count, _size, _flags, _reserved = struct.unpack_from(
+        "<8I", data, offset
+    )
+    if magic != MACHO_MAGIC_64:
+        return []
+    versions = []
+    cursor = offset + 32
+    for _ in range(command_count):
+        if len(data) < cursor + 8:
+            break
+        command, command_size = struct.unpack_from("<2I", data, cursor)
+        if command == LC_BUILD_VERSION and len(data) >= cursor + 16:
+            versions.append(decode_macho_version(struct.unpack_from("<I", data, cursor + 12)[0]))
+        elif command == LC_VERSION_MIN_IPHONEOS and len(data) >= cursor + 12:
+            versions.append(decode_macho_version(struct.unpack_from("<I", data, cursor + 8)[0]))
+        if command_size < 8:
+            break
+        cursor += command_size
+    return versions
+
+
+def macho_minimum_os(data: bytes) -> list[tuple[int, int, int]]:
+    """Return every minimum OS version declared by a thin or universal Mach-O file."""
+    if len(data) < 8:
+        return []
+    magic = struct.unpack_from(">I", data, 0)[0]
+    if magic not in (FAT_MAGIC, FAT_MAGIC_64):
+        return thin_macho_minimum_os(data)
+    versions = []
+    count = struct.unpack_from(">I", data, 4)[0]
+    entry_size = 20 if magic == FAT_MAGIC else 32
+    for index in range(count):
+        entry = 8 + index * entry_size
+        if magic == FAT_MAGIC:
+            offset = struct.unpack_from(">I", data, entry + 8)[0]
+        else:
+            offset = struct.unpack_from(">Q", data, entry + 8)[0]
+        versions.extend(thin_macho_minimum_os(data, offset))
+    return versions
+
+
+def audit_minimum_os(bundle: Path, maximum: str) -> list[Finding]:
+    """Reject bundle binaries or plists that require a newer OS than the supported minimum."""
+    findings: list[Finding] = []
+    limit = parse_version(maximum)
+    if not bundle.is_dir():
+        add_finding(findings, "MINOS-MISSING", "bundle directory does not exist", bundle)
+        return findings
+    for path in sorted(bundle.rglob("*")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        if path.name == "Info.plist":
+            try:
+                with path.open("rb") as handle:
+                    value = plistlib.load(handle).get("MinimumOSVersion")
+            except Exception:
+                continue
+            if value and parse_version(str(value)) > limit:
+                add_finding(
+                    findings,
+                    "MINOS-PLIST",
+                    f"MinimumOSVersion {value} is newer than {maximum}",
+                    path,
+                )
+            continue
+        with path.open("rb") as handle:
+            data = handle.read(4)
+            if len(data) < 4 or struct.unpack(">I", data)[0] not in (
+                FAT_MAGIC,
+                FAT_MAGIC_64,
+            ) and struct.unpack("<I", data)[0] != MACHO_MAGIC_64:
+                continue
+            data += handle.read()
+        for version in macho_minimum_os(data):
+            if version > limit:
+                add_finding(
+                    findings,
+                    "MINOS-MACHO",
+                    f"built for iOS {format_version(version)}, newer than {maximum}",
+                    path,
+                )
+    return findings
+
+
 def donor_paths(repository: Path, base: str, donor: str) -> tuple[set[str], str | None]:
     result = run_tool(
         ["git", "-C", str(repository), "diff", "--name-only", f"{base}..{donor}"]
@@ -413,6 +524,10 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     abi_parser.add_argument("--target", choices=("ios-simulator", "ios-device"), required=True)
     abi_parser.add_argument("--arch", default="arm64")
 
+    minos_parser = subparsers.add_parser("minos")
+    minos_parser.add_argument("path", type=Path)
+    minos_parser.add_argument("--maximum", required=True)
+
     port_map_parser = subparsers.add_parser("port-map")
     port_map_parser.add_argument("path", type=Path)
     port_map_parser.add_argument("--repository", type=Path, required=True)
@@ -431,6 +546,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         findings = audit_bundle(arguments.path, arguments.lane, arguments.required_resource)
     elif arguments.command == "abi":
         findings = audit_abi(arguments.path, arguments.target, arguments.arch)
+    elif arguments.command == "minos":
+        findings = audit_minimum_os(arguments.path, arguments.maximum)
     else:
         findings = audit_port_map(
             arguments.path, arguments.repository, arguments.base, arguments.donor

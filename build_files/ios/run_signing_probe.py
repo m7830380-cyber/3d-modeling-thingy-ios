@@ -115,7 +115,7 @@ def build_lane(
         "-DCMAKE_SYSTEM_NAME=iOS",
         f"-DCMAKE_OSX_SYSROOT={sysroot}",
         "-DCMAKE_OSX_ARCHITECTURES=arm64",
-        "-DCMAKE_OSX_DEPLOYMENT_TARGET=18.0",
+        "-DCMAKE_OSX_DEPLOYMENT_TARGET=16.2",
     ]
     run_logged(configure_command, artifact_root / f"{lane}-configure.log")
 
