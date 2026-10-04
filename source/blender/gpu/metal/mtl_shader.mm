@@ -222,7 +222,7 @@ static ::MTLCompileOptions *get_compile_options(const bool use_subpass_input,
     options.languageVersion = MTLLanguageVersion2_3;
   }
 #if defined(MAC_OS_VERSION_14_0)
-  if (@available(macOS 14.00, *)) {
+  if (@available(macOS 14.00, iOS 17.0, *)) {
     /* Texture atomics require Metal 3.1. */
     if (use_texture_atomic) {
       options.languageVersion = MTLLanguageVersion3_1;

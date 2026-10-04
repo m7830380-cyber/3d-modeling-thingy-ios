@@ -129,10 +129,10 @@ struct BVHMetalBuildThrottler {
  * such. #132782. */
 static bool support_refit_blas()
 {
-  if (@available(macos 15.4, *)) {
+  if (@available(macos 15.4, iOS 18.4, *)) {
     return true;
   }
-  if (@available(macos 15.2, *)) {
+  if (@available(macos 15.2, iOS 18.2, *)) {
     return false;
   }
   return true;
@@ -389,7 +389,7 @@ bool BVHMetal::build_BLAS_hair(Progress &progress,
                                bool refit)
 {
 #  if defined(MAC_OS_VERSION_14_0)
-  if (@available(macos 14.0, *)) {
+  if (@available(macos 14.0, iOS 17.0, *)) {
     /* Build BLAS for hair curves */
     Hair *hair = static_cast<Hair *>(geom);
     if (hair->num_curves() == 0) {
@@ -1105,7 +1105,7 @@ bool BVHMetal::build_TLAS(Progress &progress,
     if (use_instance_motion && num_motion_transforms) {
 #  if defined(MAC_OS_VERSION_15_0)
       if (use_pcmi) {
-        if (@available(macos 15.0, *)) {
+        if (@available(macos 15.0, iOS 18.0, *)) {
           motion_transforms_buf = [mtl_device
               newBufferWithLength:num_motion_transforms * sizeof(MTLComponentTransform)
                           options:MTLResourceStorageModeShared];
@@ -1310,7 +1310,7 @@ bool BVHMetal::build_TLAS(Progress &progress,
       accelDesc.motionTransformBuffer = motion_transforms_buf;
       accelDesc.motionTransformCount = num_motion_transforms;
 #  if defined(MAC_OS_VERSION_15_0)
-      if (@available(macos 15.0, *)) {
+      if (@available(macos 15.0, iOS 18.0, *)) {
         accelDesc.motionTransformStride = 0;
         accelDesc.motionTransformType = use_pcmi ? MTLTransformTypeComponent :
                                                    MTLTransformTypePackedFloat4x3;

@@ -24,6 +24,7 @@ jobs:
     timeout-minutes: 360
     env:
       XCODE_PATH: /Applications/Xcode_26.3.app/Contents/Developer
+      IOS_DEPLOYMENT_TARGET: '16.2'
       CI_ROOT: ${{ github.workspace }}/.ios-preview
       DEPS_BUILD: ${{ github.workspace }}/.ios-preview/deps-build
       DEPS_INSTALL: ${{ github.workspace }}/.ios-preview/deps-install
@@ -139,7 +140,7 @@ jobs:
           library_revision="$(git rev-parse HEAD:lib/macos_arm64)"
           {
             echo "xcode-cache-key=$xcode_key"
-            echo "dependency-cache-key=ios-device-deps-v5-${xcode_key}-${dependency_key}"
+            echo "dependency-cache-key=ios-device-deps-v5-ios${IOS_DEPLOYMENT_TARGET}-${xcode_key}-${dependency_key}"
             echo "host-tool-cache-key=ios-host-tools-v2-${xcode_key}-${library_revision}-${host_key}"
           } >> "$GITHUB_OUTPUT"
 
@@ -184,7 +185,7 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT="$sdk_path" \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=18.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DBLENDER_IOS_BUILD_PYTHON="$build_python" \
             -DPACKAGE_USE_UPSTREAM_SOURCES=OFF \
@@ -338,20 +339,23 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT="$sdk_path" \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=18.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DIOS_HOST_TOOLS_DIR="$HOST_INSTALL" \
             -DLIBDIR="$DEPS_BUILD/Release"
-          cmake --build "$APP_BUILD" --parallel "$build_jobs" --target install
+          cmake --build "$APP_BUILD" --parallel "$build_jobs" --target install -- -k 0
           ccache --show-stats
           python3 build_files/ios/audit_build_features.py \
             "$APP_BUILD/bin/Blender.app/Blender" \
             --require-opensubdiv
+          python3 build_files/ios/audit.py minos \
+            "$APP_BUILD/bin/Blender.app" \
+            --maximum "$IOS_DEPLOYMENT_TARGET"
 
       - name: Save full-app compiler cache
-        if: success() && steps.app-compiler-cache.outputs.cache-hit != 'true'
+        if: always() && steps.app-compiler-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: ${{ env.CCACHE_DIR }}
@@ -395,7 +399,10 @@ jobs:
             gh pr list --repo "$GITHUB_REPOSITORY" --state all --head "$BASE_REF" \
               --json number --jq '.[0].number'
           )"
-          test -n "$previous_pr"
+          stack_note=""
+          if [[ -n "$previous_pr" ]]; then
+            stack_note=", stacked on #$previous_pr"
+          fi
           short_sha="${PR_SHA:0:12}"
           summary="${PR_TITLE#*: }"
           tag="pr-$PR_NUMBER"
@@ -404,7 +411,7 @@ jobs:
           release_body="$RELEASE_DIR/release-body.md"
           comment_body="$RELEASE_DIR/comment-body.md"
           printf '%s\n\n' "Autoloader preview for https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER" > "$release_body"
-          printf '%s\n\n' "Unsigned universal iPhone+iPad IPA from \`$short_sha\` ($summary, stacked on #$previous_pr). Autoloader signs this on-device." >> "$release_body"
+          printf '%s\n\n' "Unsigned universal iPhone+iPad IPA from \`$short_sha\` ($summary$stack_note). Autoloader signs this on-device." >> "$release_body"
           printf '%s\n' \
             '- App name: DevBlender' \
             '- Bundle identifier: `test.blenderfoundation.blender.ios`' \
@@ -412,7 +419,7 @@ jobs:
             "- SHA-256: \`$IPA_SHA256\`" \
             '' \
             "Install: $install_url" >> "$release_body"
-          printf '%s\n\n' "PR $PR_NUMBER Autoloader/Feather build from \`$short_sha\` ($summary, stacked on #$previous_pr). Hosted on the \`$tag\` GitHub release, not Planista." > "$comment_body"
+          printf '%s\n\n' "PR $PR_NUMBER Autoloader/Feather build from \`$short_sha\` ($summary$stack_note). Hosted on the \`$tag\` GitHub release, not Planista." > "$comment_body"
           printf '%s\n' \
             "- Install (Safari): $install_url" \
             "- Direct IPA: $ipa_url" \

@@ -93,7 +93,7 @@ MetalDevice::MetalDevice(const DeviceInfo &info, Stats &stats, Profiler &profile
     /* Enable increased concurrent shader compiler limit.
      * This is also done by MTLContext::MTLContext, but only in GUI mode. */
 #  if TARGET_OS_OSX
-    if (@available(macOS 13.3, *)) {
+    if (@available(macOS 13.3, iOS 16.4, *)) {
       [mtlDevice setShouldMaximizeConcurrentCompilation:YES];
     }
 #  endif
@@ -114,7 +114,7 @@ MetalDevice::MetalDevice(const DeviceInfo &info, Stats &stats, Profiler &profile
      * Requires Apple9 support (https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf). */
     if (use_metalrt && [mtlDevice supportsFamily:MTLGPUFamilyApple9]) {
       /* Concave motion paths weren't correctly bounded prior to macOS 15.6 (#136253). */
-      if (@available(macos 15.6, *)) {
+      if (@available(macos 15.6, iOS 18.6, *)) {
         use_pcmi = DebugFlags().metal.use_metalrt_pcmi;
       }
     }
@@ -175,7 +175,7 @@ MetalDevice::MetalDevice(const DeviceInfo &info, Stats &stats, Profiler &profile
     mtlGeneralCommandQueue = [mtlDevice newCommandQueue];
 
 #  if defined(MAC_OS_VERSION_15_0)
-    if (@available(macos 15.0, *)) {
+    if (@available(macos 15.0, iOS 18.0, *)) {
       if (DebugFlags().metal.use_residency_sets_if_available) {
         /* Use a residency set to declare all rendering resources up front, avoiding
          * the overhead of per-encoder useResource calls on every dispatch. */
@@ -236,7 +236,7 @@ MetalDevice::~MetalDevice()
   flush_delayed_free_list();
 
 #  if defined(MAC_OS_VERSION_15_0)
-  if (@available(macos 15.0, *)) {
+  if (@available(macos 15.0, iOS 18.0, *)) {
     if (mtlResidencySet) {
       [mtlResidencySet endResidency];
       [mtlResidencySet release];
@@ -255,7 +255,7 @@ MetalDevice::~MetalDevice()
 void MetalDevice::add_to_residency_set(id<MTLResource> allocation)
 {
 #  if defined(MAC_OS_VERSION_15_0)
-  if (@available(macos 15.0, *)) {
+  if (@available(macos 15.0, iOS 18.0, *)) {
     if (allocation && mtlResidencySet) {
       std::lock_guard<std::mutex> residency_lock(mtlResidencySet_mutex);
       [mtlResidencySet addAllocation:allocation];
@@ -268,7 +268,7 @@ void MetalDevice::add_to_residency_set(id<MTLResource> allocation)
 void MetalDevice::remove_from_residency_set(id<MTLResource> allocation)
 {
 #  if defined(MAC_OS_VERSION_15_0)
-  if (@available(macos 15.0, *)) {
+  if (@available(macos 15.0, iOS 18.0, *)) {
     if (allocation && mtlResidencySet) {
       std::lock_guard<std::mutex> residency_lock(mtlResidencySet_mutex);
       [mtlResidencySet removeAllocation:allocation];
@@ -306,7 +306,7 @@ void MetalDevice::metal_mem_free(id<MTLResource> allocation)
 void MetalDevice::prepare_residency()
 {
 #  if defined(MAC_OS_VERSION_15_0)
-  if (@available(macos 15.0, *)) {
+  if (@available(macos 15.0, iOS 18.0, *)) {
     if (mtlResidencySet) {
       std::lock_guard<std::mutex> residency_lock(mtlResidencySet_mutex);
       if (mtlResidencySet_dirty) {
@@ -368,7 +368,7 @@ string MetalDevice::preprocess_source(MetalPipelineType pso_type,
 #  endif
 
   global_defines += "#define __KERNEL_METAL_APPLE__\n";
-  if (@available(macos 14.0, *)) {
+  if (@available(macos 14.0, iOS 17.0, *)) {
     /* Use Program Scope Global Built-ins, when available. */
     global_defines += "#define __METAL_GLOBAL_BUILTINS__\n";
   }
@@ -584,12 +584,12 @@ void MetalDevice::compile_and_load(const int device_id, MetalPipelineType pso_ty
     }
 #  endif
 #  if defined(MAC_OS_VERSION_14_0)
-    if (@available(macos 14.0, *)) {
+    if (@available(macos 14.0, iOS 17.0, *)) {
       options.languageVersion = MTLLanguageVersion3_1;
     }
 #  endif
 #  if defined(MAC_OS_VERSION_15_0)
-    if (@available(macos 15.0, *)) {
+    if (@available(macos 15.0, iOS 18.0, *)) {
       options.languageVersion = MTLLanguageVersion3_2;
       if (const char *loglevel = getenv("MTL_LOG_LEVEL")) {
         if (strcmp(loglevel, "MTLLogLevelDebug") == 0) {

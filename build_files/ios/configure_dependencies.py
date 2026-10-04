@@ -139,7 +139,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--repository", type=Path, default=Path.cwd())
     parser.add_argument("--bulk-root", type=Path, default=CANONICAL_BULK)
     parser.add_argument("--target", choices=("ios-simulator", "ios-device"), default="ios-simulator")
-    parser.add_argument("--deployment-target", default="18.0")
+    parser.add_argument("--deployment-target", default="16.2")
     parser.add_argument("--feature-profile", default="ios_sim_minimal")
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--print-plan", action="store_true")

@@ -495,7 +495,7 @@ void MTLBackend::capabilities_init(MTLContext *ctx)
   /* Texture atomics supported in Metal 3.1. */
   MTLBackend::capabilities.supports_texture_atomics = false;
 #if defined(MAC_OS_VERSION_14_0)
-  if (@available(macOS 14.0, *)) {
+  if (@available(macOS 14.0, iOS 17.0, *)) {
     MTLBackend::capabilities.supports_texture_atomics = true;
   }
 #endif

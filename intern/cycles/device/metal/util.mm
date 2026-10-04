@@ -24,6 +24,23 @@ CCL_NAMESPACE_BEGIN
 /* Comment this out to test workaround for getting gpuAddress and gpuResourceID on macOS < 13.0. */
 #  define CYCLES_USE_TIER2D_BINDLESS
 
+NSArray<id<MTLDevice>> *MetalInfo::copy_all_devices()
+{
+#  if TARGET_OS_IOS
+  /* MTLCopyAllDevices is only exported by iOS 18 and newer. */
+  if (@available(iOS 18.0, *)) {
+    return MTLCopyAllDevices();
+  }
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  NSArray<id<MTLDevice>> *devices = device ? [[NSArray alloc] initWithObjects:device, nil] :
+                                             [[NSArray alloc] init];
+  [device release];
+  return devices;
+#  else
+  return MTLCopyAllDevices();
+#  endif
+}
+
 string MetalInfo::get_device_name(id<MTLDevice> device)
 {
   string device_name = [device.name UTF8String];
@@ -95,7 +112,7 @@ const vector<id<MTLDevice>> &MetalInfo::get_usable_devices()
   }
 
   metal_printf("Usable Metal devices:");
-  for (id<MTLDevice> device in MTLCopyAllDevices()) {
+  for (id<MTLDevice> device in copy_all_devices()) {
     string device_name = get_device_name(device);
     bool usable = false;
 

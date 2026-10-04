@@ -31,6 +31,8 @@ enum AppleGPUArchitecture {
 
 /* Contains static Metal helper functions. */
 struct MetalInfo {
+  /* Returns a retained array, like MTLCopyAllDevices. */
+  static NSArray<id<MTLDevice>> *copy_all_devices();
   static const vector<id<MTLDevice>> &get_usable_devices();
   static int get_apple_gpu_core_count(id<MTLDevice> device);
   static AppleGPUArchitecture get_apple_gpu_architecture(id<MTLDevice> device);

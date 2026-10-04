@@ -32,6 +32,8 @@ namespace blender::gpu {
 /** \name Texture Utility Functions
  * \{ */
 
+MTL_BACKEND_PIXEL_FORMAT_TABLES_BEGIN
+
 MTLPixelFormat gpu_texture_format_to_metal(TextureFormat tex_format)
 {
 #define CASE(a, b, c, blender_enum, d, mtl_pixel_enum, f, g, h) \
@@ -196,6 +198,8 @@ int get_mtl_format_num_components(MTLPixelFormat tex_format)
       return 1;
   }
 }
+
+MTL_BACKEND_PIXEL_FORMAT_TABLES_END
 
 bool mtl_format_supports_blending(MTLPixelFormat format)
 {
